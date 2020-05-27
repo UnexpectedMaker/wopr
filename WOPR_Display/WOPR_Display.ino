@@ -5,7 +5,7 @@
 
   This code is designed specifically to run on an ESP32. It uses features only
   available on the ESP32 like RMT and ledcSetup.
-Select Mode:
+
   W.O.P.R is available on tindie
   https://www.tindie.com/products/seonr/wopr-missile-launch-code-display-kit/
   
@@ -61,7 +61,7 @@ Refactor Solve mode, so we can override in other features
 
 // NTP Wifi Time
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3600 * -8;
+const long  gmtOffset_sec = 3600 * 11;              
 const int   daylightOffset_sec = 3600;
 
 // Program & Menu state
@@ -725,7 +725,7 @@ void loop()
       {
         if ( nextBeep < millis() )
         {
-          beeping = !beeping; // TODO : should/scould we use (animFlag&PER_HALF_SECOND_TOGGLE);
+          beeping = !beeping; // TODO : should/could we use (animFlag&PER_HALF_SECOND_TOGGLE);
           nextBeep = millis() + 500;
     
           if ( beeping ) // TODO : test if this would work (animFlag&PER_HALF_SECOND_TOGGLE);
