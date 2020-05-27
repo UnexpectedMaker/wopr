@@ -5,7 +5,7 @@
 
   This code is designed specifically to run on an ESP32. It uses features only
   available on the ESP32 like RMT and ledcSetup.
-
+Select Mode:
   W.O.P.R is available on tindie
   https://www.tindie.com/products/seonr/wopr-missile-launch-code-display-kit/
   
@@ -14,6 +14,21 @@
 
   And the TinyPICO Audio Shield
   https://www.tinypico.com/shop/tinypico-mzffe-zatnr
+
+2020/05/23 - CJW 
+Updated menu to be a dynamic array
+Added the concept of idle user shows clock
+Added the concept of super idle user clears display - shows first char dot as running active
+Added Central animation flag counter with Binary tests
+Added Setup to features
+
+2020/05/24 - CJW 
+Adding Feature Alarm file
+Refactor WOPR_Display file to allow Features to hook in
+Refactor Setup so we can "reset" the wifi - with some demo scrolling text
+
+2020/05/26 - CJW 
+Refactor Solve mode, so we can override in other features
 
  ****************************************************/
 
@@ -38,14 +53,22 @@
 #define RGBLED 27 // RGB LED Strip
 #define DAC 25 // RGB LED Strip
 
+#define IDLE_MINS 1                                                 // Number of min's before we are considered idle
+#define NODISPLAY_MINS 2                                            // Number of min's before we are considered idle
+#define IDLE_TIME ((IDLE_MINS*60)*1000)                             // ms of mins before we are considered idle and show clock
+#define NODISPLAY_TIME ((NODISPLAY_MINS*60)*1000)                   // ms of mins after we are idle will disable display Time
+#define ALLOW_CLOCK_BLANKING false                                  // Set true, if you want to allow idle clock blanking (Alarm can override this)
+
 // NTP Wifi Time
 const char* ntpServer = "pool.ntp.org";
-const long  gmtOffset_sec = 3600 * 11;
+const long  gmtOffset_sec = 3600 * -8;
 const int   daylightOffset_sec = 3600;
 
 // Program & Menu state
 uint8_t currentState = 0; // 0 - menu, 1 - running
-uint8_t currentMode = 0; // 0 - movie simulation, 1 - random sequence, 2 - message, 3 - clock
+uint8_t currentMode = 0; // 0 - movie simulation, 1 - random sequence, 2 - message, 3 - clock, 4 - Alarm Controls
+String mainMenu[] = {"MODE MOVIE", "MODE RANDOM", "MODE MESSAGE", "MODE CLOCK", "MODE ALARM"};
+uint8_t mainMenuCount = ( sizeof(mainMenu) / sizeof(mainMenu[0]) ) - 1;
 
 /* Code cracking stuff
  * Though this works really well, there are probably much nicer and cleaner 
@@ -62,6 +85,13 @@ float solveStepMulti = 1;
 uint8_t solveCount = 0;
 uint8_t solveCountFinished = 10;
 byte lastDefconLevel = 0;
+
+// Anim Toggles - 250ms cycle changing - add more defines as desired
+#define PER_SECOND_TOGGLE           (1<<2)
+#define PER_HALF_SECOND_TOGGLE      (1<<1)
+#define PER_QTR_SECOND_TOGGLE       (1)
+byte animCounter = 0;      //  Increase every 250ms,  mask for above defines to check toggle
+unsigned long nextAnim = 0;
 
 // Audio stuff
 bool beeping = false;
@@ -82,9 +112,6 @@ uint32_t defcon_colors[] = {
   Color(0, 0, 255),
 };
 
-
-
-
 // Setup 3 AlphaNumeric displays (4 digits per display)
 Adafruit_AlphaNum4 matrix[3] = { Adafruit_AlphaNum4(), Adafruit_AlphaNum4(), Adafruit_AlphaNum4() };
 
@@ -98,11 +125,13 @@ char missile_code_message[12] = {'L', 'O', 'L', 'Z', ' ', 'F', 'O', 'R', ' ', 'Y
 
 uint8_t code_solve_order_movie[10] = {7,1,4,6,11,2,5,0,10,9};  // 4 P 1 0 S E 7 C K T
 
-uint8_t code_solve_order_random[12] = {99,99,99,99,99,99,99,99,99,99,99,99};
+uint8_t code_solve_order_random[12];    // Now initialized in randomize order function
+uint8_t codeSolveMode;                  // Initialized on ResetCode
 
 // Initialise the buttons using OneButton library
 OneButton Button1(BUT1, false);
 OneButton Button2(BUT2, false);
+unsigned long nextIdleTime = 0;     // MS when we should consider the user abandom'd the controls
 
 void setup()
 {
@@ -126,11 +155,10 @@ void setup()
   matrix[2].begin(0x74);  // pass in the address  0x70 == 1, 0x72 == 2, 0x74 == 3
 
   // Reset the code variables
-  ResetCode();
+  ResetCode( currentMode );
 
-  // Clear the display & RGB strip
+  // Clear the display
   Clear();
-  RGB_Clear();
 
   // Setup the Audio channel
   ledcSetup(channel, freq, resolution);
@@ -143,8 +171,11 @@ void setup()
    */
   StartWifi();
 
+  // Setup Features
+  Setup_Alarm();
+  
   // Display MENU
-  DisplayText( "MENU" );
+  DisplayText( "MENU" , true);
 }
 
 void StartWifi()
@@ -152,21 +183,45 @@ void StartWifi()
   //connect to WiFi
   Serial.printf("Connecting to %s ", ssid);
   WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED) {
-      delay(500);
-      Serial.print(".");
-  }
-  Serial.println(" CONNECTED");
+  String whileMessage = "Connecting  ";
+  int whileCount = 0;
   
+  DisplayText(whileMessage, true);
+  while (WiFi.status() != WL_CONNECTED) {
+    
+    delay( 500 );
+
+    // If we have tried 20 times - lets reset WIFI (sometimes this helps :) )
+    if (  whileCount > 20 ) {
+      Serial.println(".");
+      WiFi.begin(ssid, password);
+      Serial.printf("Reseting to %s ", ssid);
+      DisplayText("Reseting", true);
+      whileCount = 0;
+    }
+    else {
+      Serial.print(".");
+      whileCount++;
+      whileMessage = whileMessage.substring(1, whileMessage.length() )+whileMessage[0];
+      DisplayText(whileMessage, true);
+    }
+  }
+  Serial.println("CONNECTED");
+  DisplayText("Connected", true);
+
   //init and get the time
   configTime(gmtOffset_sec, daylightOffset_sec, ntpServer);
 
   struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
+  if ( !getLocalTime(&timeinfo) ) {
     Serial.println("Failed to obtain time");
+    DisplayText("Bad Time", true);
+    delay(500);
     return;
   }
   Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+
+  nextIdleTime = GetTimeWithZeroMillis(IDLE_TIME);      // Set check idle to be in the future - remove to auto move to clock on start
 
   //disconnect WiFi as it's no longer needed
   WiFi.disconnect(true);
@@ -181,14 +236,22 @@ void BUT1Press()
   // Only allow a button press every 10ms
   if ( nextButtonPress < millis() )
   {
+    nextIdleTime = GetTimeWithZeroMillis(IDLE_TIME);      // Set check idle to be in the future
+
     nextButtonPress = millis() + 10;
+
+    // Button used by alarm
+    if ( BUT1Press_Alarm() )
+    {
+      return;
+    }
 
     // If we are not in the menu, cancel the current state and show the menu
     if ( currentState == 1 )
     {
       currentState = 0;
             
-      DisplayText( "MENU" );
+      DisplayText( "MENU" , true );
 
       //Shutdown the audio is it's beeping
       ledcWriteTone(channel, 0);
@@ -196,19 +259,13 @@ void BUT1Press()
     }
     else
     {
-      // Update the current program state and display it on the menu
+      // Update the current program state and display it on the menu - refactored so we are array index based
       currentMode++;
-      if ( currentMode == 4 )
+      if ( currentMode > mainMenuCount ) {
         currentMode = 0;
+      }
 
-      if ( currentMode == 0 )
-        DisplayText( "MODE MOVIE" );
-      else if ( currentMode == 1 )
-        DisplayText( "MODE RANDOM" );
-      else if ( currentMode == 2 )
-        DisplayText( "MODE MESSAGE" );
-      else if ( currentMode == 3 )
-        DisplayText( "MODE CLOCK" );
+       MenuDisplay();
     }
 
     Serial.print("Current State: ");
@@ -224,6 +281,14 @@ void BUT2Press()
   // Only allow a button press every 10ms
   if ( nextButtonPress < millis() )
   {
+    nextIdleTime = GetTimeWithZeroMillis(IDLE_TIME);      // Set check idle to be in the future
+  
+    // Button used by alarm
+    if ( BUT2Press_Alarm() )
+    {
+      return;
+    }
+
     nextButtonPress = millis() + 10;
 
     // If in the menu, start whatever menu option we are in 
@@ -235,7 +300,7 @@ void BUT2Press()
       else
         RGB_Clear(true);
         
-      ResetCode();
+      ResetCode( currentMode );
       Clear();
       currentState = 1;
     }
@@ -245,43 +310,54 @@ void BUT2Press()
   Serial.println( currentState );
 }
 
-// Take the time data from the RTC and format it into a string we can display
-void DisplayTime()
+// Display current menu item - refactored to an array
+void MenuDisplay()
 {
-  // Store the current time into a struct
-  struct tm timeinfo;
-  if(!getLocalTime(&timeinfo)){
-    Serial.println("Failed to obtain time");
-    return;
-  }
-  // Formt the contents of the time struct into a string for display
-  char DateAndTimeString[12];
-  if ( timeinfo.tm_hour < 10 )
-    sprintf(DateAndTimeString, "   %d %02d %02d", timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
-  else
-    sprintf(DateAndTimeString, "  %d %02d %02d", timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
+  DisplayText( mainMenu[currentMode] , false );
+}
 
-  // Iterate through each digit on the display and populate the time, or clear the digit
-  uint8_t curDisplay = 0;
-  uint8_t curDigit = 0;
-
-  for ( uint8_t i = 0; i < 10; i++ )
+// Display the provide time data structure
+void DisplayTime(struct tm timeinfo)
+{
+  // If we been idle longer than IDLE_TIME+NODISPLAY_TIME , and if alarm approves
+  if ( nextIdleTime + NODISPLAY_TIME < millis() && IdleTest_Alarm(true) )
   {
-    matrix[curDisplay].writeDigitAscii( curDigit, DateAndTimeString[i]);
-    curDigit++;
-    if ( curDigit == 4 )
-    {
-      curDigit = 0;
-      curDisplay++;
-    }
-  }
+      Clear();  // Clear the display
 
+      // lets flash the first dot for a UI indication we are running  
+      matrix[0].writeDigitAscii( 0, ' ',  ( animCounter&PER_SECOND_TOGGLE ) );
+  }
+  else
+  {
+      // Formt the contents of the time struct into a string for display
+      char DateAndTimeString[12];
+      if ( timeinfo.tm_hour < 10 )
+        sprintf(DateAndTimeString, "   %d %02d %02d", timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
+      else
+        sprintf(DateAndTimeString, "  %d %02d %02d", timeinfo.tm_hour,timeinfo.tm_min,timeinfo.tm_sec);
+    
+      // Iterate through each digit on the display and populate the time, or clear the digit
+      uint8_t curDisplay = 0;
+      uint8_t curDigit = 0;
+    
+      for ( uint8_t i = 0; i < 10; i++ )
+      {
+        ApplyDotState(curDisplay, curDigit, DateAndTimeString[i] );
+        curDigit++;
+        if ( curDigit == 4 )
+        {
+          curDigit = 0;
+          curDisplay++;
+        }
+      }
+  }
+  
   // Show whatever is in the display buffer on the display
   Display();
 }
 
 // Display whatever is in txt on the display
-void DisplayText(String txt)
+void DisplayText(String txt, bool clearLeds)
 {
   uint8_t curDisplay = 0;
   uint8_t curDigit = 0;
@@ -291,7 +367,7 @@ void DisplayText(String txt)
   // Iterate through each digit and push the character rom the txt string into that position
   for ( uint8_t i = 0; i < txt.length(); i++ )
   {
-    matrix[curDisplay].writeDigitAscii( curDigit, txt.charAt(i));
+    ApplyDotState(curDisplay, curDigit, txt.charAt(i) );
     curDigit++;
     if ( curDigit == 4 )
     {
@@ -300,6 +376,11 @@ void DisplayText(String txt)
     }
   }
 
+  if ( clearLeds ) 
+  {
+    RGB_Clear(true);
+  }
+  
   // Show whatever is in the display buffer on the display
   Display();
 }
@@ -329,7 +410,8 @@ void FillCodes()
       while ( ( c > 57 && c < 65 ) || c == c_code )
         c = random( 48, 91 );
     }
-    matrix[matrix_index].writeDigitAscii( character_index, c );
+
+    ApplyDotState(matrix_index, character_index, c );
     character_index++;
     if ( character_index == 4 )
     {
@@ -345,6 +427,10 @@ void FillCodes()
 // Randomise the order of the code being solved
 void RandomiseSolveOrder()
 {
+  // lets stop inf loop, if this is called more than once per session
+  static const uint8_t initRandomOrder[] = {99,99,99,99,99,99,99,99,99,99,99,99};
+  memcpy (code_solve_order_random, initRandomOrder, sizeof (code_solve_order_random));
+
   for ( uint8_t i = 0; i < 12; i++ )
   {
     uint8_t ind = random(0, 12);
@@ -356,70 +442,78 @@ void RandomiseSolveOrder()
 }
 
 // Reset the code being solved back to it's starting state
-void ResetCode()
+void ResetCode(uint8_t solveMode)
 {
-  if ( currentMode == 0 )
+  codeSolveMode = solveMode;
+  Serial.println((String)"ResetCode : "+codeSolveMode);
+
+  switch ( codeSolveMode )
   {
-    solveStepMulti = 1;
-    solveCountFinished  = 10;
-    for ( uint8_t i = 0; i < 12; i++ )
-      missile_code[i] = missile_code_movie[i];
-  }
-  else if ( currentMode == 1 )
-  {
-    solveStepMulti = 0.5;
+    // Movie mode
+    default:
+    case 0: 
+        solveStepMulti = 1;
+        solveCountFinished  = 10;
+        for ( uint8_t i = 0; i < 12; i++ )
+          missile_code[i] = missile_code_movie[i];
+    break;
     
-    // Randomise the order in which we solve this code
-    RandomiseSolveOrder();
-
-    // Set the code length and populate the code with random chars
-    solveCountFinished = 12;
+    // Randomize mode
+    case 1:
+        solveStepMulti = 0.5;
     
-    for ( uint8_t i = 0; i < 12; i++ )
-    {
-      Serial.print("Setting code index ");
-      Serial.print(i);
-     
-      // c is a character we need to randomise
-      char c = random( 48, 91 );
-      while ( c > 57 && c < 65 )
-        c = random( 48, 91 );
-
-
-     Serial.print(" to char ");
-     Serial.println( c );
-
-      missile_code[i] = c;
-    }
-  }
-  else if ( currentMode == 2 )
-  {
-    solveStepMulti = 0.5;
+        // Randomise the order in which we solve this code
+        RandomiseSolveOrder();
     
-    // Randomise the order in which we solve this code
-    RandomiseSolveOrder();
-
-    // Set the code length and populate the code with the stored message
-    solveCountFinished = 12;
-    for ( uint8_t i = 0; i < 12; i++ )
-      missile_code[i] = missile_code_message[i];
+        // Set the code length and populate the code with random chars
+        solveCountFinished = 12;
+        
+        for ( uint8_t i = 0; i < 12; i++ )
+        {
+          Serial.print("Setting code index ");
+          Serial.print(i);
+         
+          // c is a character we need to randomise
+          char c = random( 48, 91 );
+          while ( c > 57 && c < 65 )
+            c = random( 48, 91 );
+    
+    
+         Serial.print(" to char ");
+         Serial.println( c );
+    
+          missile_code[i] = c;
+        } 
+    break;
+    
+    // Message mode
+    case 2: 
+        solveStepMulti = 0.5;
+    
+        // Randomise the order in which we solve this code
+        RandomiseSolveOrder();
+    
+        // Set the code length and populate the code with the stored message
+        solveCountFinished = 12;
+        for ( uint8_t i = 0; i < 12; i++ )
+          missile_code[i] = missile_code_message[i];
+     break;
   }
 
   // Set the first solve time step for the first digit lock
-  
   solveStep = GetNextSolveStep();
   nextSolve = millis() + solveStep;
   solveCount = 0;
   lastDefconLevel = 0;
-
+    
   // Clear code display buffer
   for ( uint8_t i = 0; i < 12; i++ )
   {
-    if ( currentMode == 0 && ( i == 3 || i == 8 ) )
+    if ( codeSolveMode == 0 && ( i == 3 || i == 8 ) )
       displaybuffer[ i ] = ' ';
     else
       displaybuffer[ i ] = '-';
-  }
+  }    
 }
 
 /*  Solve the code based on the order of the solver for the current mode
@@ -428,15 +522,17 @@ void ResetCode()
  *  in the order it was solved in the movie.
  */
 
-void SolveCode()
+void SolveCode(bool alarmMode)
 {
   // If the number of digits solved is less than the number to be solved
   if ( solveCount < solveCountFinished )
   {
+    nextIdleTime = GetTimeWithZeroMillis(IDLE_TIME);      // Set check idle to be in the future
+    
     // Grab the next digit from the code based on the mode
     uint8_t index = 0;
     
-    if ( currentMode == 0 )
+    if ( codeSolveMode == 0 )
     {
       index = code_solve_order_movie[ solveCount ];
       displaybuffer[ index ] = missile_code[ index ];
@@ -447,7 +543,7 @@ void SolveCode()
       displaybuffer[ index ] = missile_code[ index ];
     }
 
-    Serial.println("Found "+ String(displaybuffer[ index ]) +" @ index: " + String(solveCount));
+    Serial.println("Found "+(String)(currentMode)+" "+ String(displaybuffer[ index ]) +" @ index: " + String(solveCount));
     
     // move tghe solver to the next digit of the code
     solveCount++;
@@ -457,20 +553,21 @@ void SolveCode()
 
     Serial.println("Solved " + String(solved));
 
-    byte defconValue = int(solved * 5 + 1);
-    RGB_SetDefcon(defconValue, false);
+    if ( !alarmMode )
+    {
+      byte defconValue = int(solved * 5 + 1);
+      RGB_SetDefcon(defconValue, false);
 
-    Serial.println("Defcon " + String(defconValue));
+      Serial.println("Defcon " + String(defconValue));
 
-    Serial.println("Next solve index: " + String(solveCount));
+      Serial.println("Next solve index: " + String(solveCount));
 
-    FillCodes();
-
-    // Long beep to indicate a digit in he code has been solved!
-    ledcWriteTone(channel, 1500 );
-    beeping = true;
-    beepCount = 3;
-    nextBeep = millis() + 500;
+      // Long beep to indicate a digit in he code has been solved!
+      ledcWriteTone(channel, 1500 );
+      beeping = true;
+      beepCount = 3;
+      nextBeep = millis() + 500;
+    }
   }
 }
 
@@ -482,17 +579,33 @@ void Clear()
   {
     // There are 4 digits per LED driver
     for ( int d = 0; d < 4; d++ )
-      matrix[i].writeDigitAscii( d, ' ');
+      ApplyDotState(i, d, ' ' );
 
     matrix[i].writeDisplay();
   }
 }
 
+// Get a dot state for LED driver, as we write this char
+void ApplyDotState(int ledDriver, int ledDigit, char charByte)
+{
+  bool ledDotState = false;
+  
+  // Ask alarm if it should be enabled, pass in currentState to enable 
+  ledDotState = GetDotState_Alarm(ledDriver, ledDigit, charByte, ledDotState);
+
+  matrix[ledDriver].writeDigitAscii( ledDigit, charByte , ledDotState);
+}
+
 // Show the contents of the display buffer on the displays
 void Display()
 {
-  for ( int i = 0; i < 3; i++ )
+  // Additional Display updates from Alarm
+  Display_Alarm();
+
+  //
+  for ( int i = 0; i < 3; i++ ) {
     matrix[i].writeDisplay();
+  }
 }
 
 void RGB_SetDefcon( byte level, bool force )
@@ -535,11 +648,48 @@ void RGB_Rainbow(int wait)
   }
 }
 
+// Test if user is idle 
+void IdleTest()
+{
+  // if we idle out , lets show the clock
+  if ( nextIdleTime < millis() )
+  {
+    // Only check if we are not already in clock mode
+    if ( currentMode != 3 || currentState != 1 )
+    {
+      // Check alarm to see if we should allow idle flows
+      if ( !IdleTest_Alarm(false) )
+      {
+        return;
+      }
+
+      Clear();
+      RGB_Clear(true);
+        
+      currentMode = 3;
+      currentState = 1;
+    }
+  }
+}
+
 void loop()
 {
   // Used by OneButton to poll for button inputs
   Button1.tick();
   Button2.tick();
+
+  // Animation flag controls for all features
+  if ( nextAnim < millis() )
+  {
+    nextAnim = millis() + 250;
+    animCounter++;
+  }
+
+  // Alarm loop always processes for alarm state changes
+  Loop_Alarm();
+
+  // Lets check if we should go into user idle
+  IdleTest();
 
   // We are in the menu
   if ( currentState == 0 )
@@ -547,15 +697,25 @@ void loop()
     // We dont need to do anything here, but lets show some fancy RGB!
     RGB_Rainbow(10);
   }
-  // We are running a simulation
-  else
+  // If not in alarm mode
+  else if ( currentMode != 4 )
   {
+    // We are running a simulation
     if ( currentMode == 3 )
     {
+      // update clock every second
       if ( nextBeep < millis() )
       {
-        DisplayTime();
         nextBeep = millis() + 1000;
+        
+        // Take the time data from the RTC and format it into a string we can display
+        struct tm timeinfo;
+        if(!getLocalTime(&timeinfo)){
+          Serial.println("Failed to obtain time");
+          return;
+        }
+
+        DisplayTime(timeinfo);
       }
     }
     else
@@ -565,10 +725,10 @@ void loop()
       {
         if ( nextBeep < millis() )
         {
-          beeping = !beeping;
+          beeping = !beeping; // TODO : should/scould we use (animFlag&PER_HALF_SECOND_TOGGLE);
           nextBeep = millis() + 500;
     
-          if ( beeping )
+          if ( beeping ) // TODO : test if this would work (animFlag&PER_HALF_SECOND_TOGGLE);
           {
             if ( beepCount > 0 )
             {
@@ -580,7 +740,7 @@ void loop()
             else
             {
               RGB_SetDefcon(1, true);
-              DisplayText("LAUNCHING...");
+              DisplayText("LAUNCHING...", false);
             }
           }
           else
@@ -616,7 +776,7 @@ void loop()
         // Set the solve time step to a random length
         solveStep = GetNextSolveStep();
         //
-        SolveCode();
+        SolveCode(false);
       }
   
       // Zturn off any beeping if it's trying to beep
@@ -630,4 +790,12 @@ void loop()
       }
     }
   }
+}
+
+/*
+ * Lets try and keep all counters to be in the same second for timing
+*/
+unsigned long GetTimeWithZeroMillis(unsigned long addTime)
+{
+    return ( (millis() /1000) *1000) + addTime;
 }
