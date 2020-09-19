@@ -7,13 +7,14 @@
   available on the ESP32 like RMT and ledcSetup.
 
   W.O.P.R is available on tindie
+
   https://www.tindie.com/products/seonr/wopr-missile-launch-code-display-kit/
-
-  Wired up for use with the TinyPICO ESP32 Development Board
-  https://www.tinypico.com/shop/tinypico
-
-  And the TinyPICO Audio Shield
-  https://www.tinypico.com/shop/tinypico-mzffe-zatnr
+  
+  Wired up for use with the TinyPICO ESP32 Development Board & TinyPICO Audio Shield
+  
+  All products also available on my own store
+  
+  http://unexpectedmaker.com/shop/
 
  ****************************************************/
 
@@ -25,7 +26,7 @@
 #include "Adafruit_LEDBackpack.h" // From Library Manager
 #include "OneButton.h" // From Library Manager
 #include "SPIFFS.h"
-#include "ESPFlash.h" // ESPFlash from Library Manager
+#include "ESPFlash_Mod.h"
 #include <WiFi.h>
 #include "time.h"
 #include "secret.h"
@@ -177,14 +178,12 @@ void setup()
   Serial.println("");
   Serial.println("Wargames Missile Codes");
 
-  // Load the user settings. If this fails, defaults are created.
-  loadSettings();
 
   // Setup RMT RGB strip
   while ( !RGB_Setup(RGBLED, 50) )
   {
     // This is not good...
-    delay(1000);
+    delay(10);
   }
 
   // Attatch button IO for OneButton
@@ -207,6 +206,13 @@ void setup()
   // Clear the display & RGB strip
   Clear();
   RGB_Clear();
+
+  
+  // Load the user settings. If this fails, defaults are created.
+  DisplayText( "FRMAT SPIFFS" );
+  loadSettings();
+  
+  
   SetDisplayBrightness(settings_displayBrightness);
 
 
@@ -898,6 +904,7 @@ void loop()
     // If settings_clockCountdownTime is 0, this feature is off
     if ( hasWiFi && settings_clockCountdownTime > 0 && countdownToClock < millis()  )
     {
+      Clear();
       currentMode = CLOCK;
       currentState = RUNNING;
     }
@@ -993,41 +1000,25 @@ void loop()
 }
 
 // File/Settings Stuff
-
-// Save defaults in SPIFFS
-void createSettings()
-{
-  Serial.println("**** Creating settings!!!");
-  ESPFlash<int> set_GMT("/set_GMT");
-  set_GMT.set(0);
-
-  ESPFlash<int> set_DST("/set_DST");
-  set_DST.set(0);
-
-  ESPFlash<uint8_t> set_ClockCountdown("/set_ClockCountdown");
-  set_ClockCountdown.set(60);
-
-  ESPFlash<uint8_t> set_Separator("/set_Separator");
-  set_Separator.set(0);
-
-  ESPFlash<uint8_t> set_Brightness("/set_Brightness");
-  set_Brightness.set(15);
-}
-
 void loadSettings()
 {
   ESPFlash<uint8_t> set_ClockCountdown("/set_ClockCountdown");
-  settings_clockCountdownTime = set_ClockCountdown.get();
+  int leng = set_ClockCountdown.length();
 
   // If the clock countdown is 0, then no data exists
   // So we wil create the defaults and reload
-  if ( settings_clockCountdownTime == 0 )
+  if ( leng == 0 )
   {
-    createSettings();
+    Serial.println("**** Creating settings!!!");
+    saveSettings();
     loadSettings();
     return;
   }
+  Clear();
 
+//  ESPFlash<uint8_t> set_ClockCountdown("/set_ClockCountdown");
+  settings_clockCountdownTime = set_ClockCountdown.get();
+  
   ESPFlash<uint8_t> set_Separator("/set_Separator");
   settings_separator = constrain(set_Separator.get(), 0, ELEMENTS(clockSeparators) - 1);
 
