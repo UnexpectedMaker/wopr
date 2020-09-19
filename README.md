@@ -20,11 +20,19 @@ To flash the code onto your board, you'll need to have the  Arduino IDE installe
 
 This updated version includes:
 
-- New user settings mode that let's you set the GMT, DTS, Brightness and Clock timer (how long it sits on the menu before defaulting to the clock display)
+- New persistent user settings mode
 - All menus are now ENUMS so it's easier to follow the code
 - Added some of my War Games sound board stuff from: https://www.youtube.com/watch?v=3bC9B00c_XI
 - Added support for the extra buttons on the HAXORZ edition of the PCB
 - WiFi & NTP connection info on device start 
+
+User settings include:
+
+- Set your GMT
+- Set DST (Daylight Savings Time) on/off
+- Set Display Brightness
+- Set Clock countdown timer (how long it sits on the menu before defaulting to the clock display)
+- Set the clock separator character
 
 # Settings Instructions
 Button 1 (right button) to switch mode to settings
@@ -36,7 +44,8 @@ Button 1 switches which setting you are on
 Button 2 changes the current settings value
 
 HAXORZ edition also uses the 2 new buttons on the back to change settings value up and down 
-Hold Button 1 to save settings. Display will show "saving..." when triggered. 
+
+Hold Button 1 to save/exit settings. Display will show "saving..." when triggered. 
 
 I any of the clock settings are changed (GMT or DTS) then the W.O.P.R. will restart after saving settings.
 

@@ -32,8 +32,8 @@
 #include "rmt.h"
 
 // To play sound clips, we need the awesome Game Audio library from XTronical
+// Grab the zip an follow the instructions in this link
 // http://www.buildlog.net/blog/2018/02/game-audio-for-the-esp32/
-// http://www.buildlog.net/blog/wp-content/uploads/2018/02/Game_Audio.zip
 #include "Game_Audio.h"
 #include "greetings.h"
 
@@ -62,23 +62,24 @@ uint8_t settings_clockCountdownTime = 60;
 // User settable GMT value
 int settings_GMT = 0;
 // User settable Daylight Savings state
-bool settings_DTS = false;
+bool settings_DST = false;
 // User settable display brightness
 uint8_t settings_displayBrightness = 15;
+// User settable clock separator
+uint8_t settings_separator = 0; // 0 is " ", 1 is "-", 2 is "_"
 
 
 // NTP Wifi Time
 const char* ntpServer = "pool.ntp.org";
 const int   daylightOffset_sec = 3600;
 bool didChangeClockSettings = false;
+bool hasWiFi = false;
 
 //// Program & Menu state
-//uint8_t currentState = 0; // 0 - menu, 1 - running
-//uint8_t currentMode = 0; // 0 - movie simulation, 1 - random sequence, 2 - message, 3 - clock, 4 - settings
-
+String clockSeparators [] = {" ", "-", "_"};
 String stateStrings[] = {"MENU", "RUNNING", "SETTINGS"};
 String menuStrings[] = {"MODE MOVIE", "MODE RANDOM", "MODE MESSAGE", "MODE CLOCK", "SETTINGS"};
-String settingsStrings[] = {"GMT ", "DTS ", "BRIGHT ", "CLK CNT "};
+String settingsStrings[] = {"GMT ", "DST ", "BRIGHT ", "CLK CNT ", "CLK SEP "};
 
 enum states {
   MENU = 0,
@@ -91,14 +92,15 @@ enum modes {
   RANDOM = 1,
   MESSAGE = 2,
   CLOCK = 3,
-  SETTINGS = 4
+  SETTINGS = 4,
 } currentMode;
 
 enum settings {
   SET_GMT = 0,
-  SET_DTS = 1,
+  SET_DST = 1,
   SET_BRIGHT = 2,
-  SET_CLOCK = 3
+  SET_CLOCK = 3,
+  SET_SEP = 4,
 } currentSetting;
 
 
@@ -171,6 +173,8 @@ Game_Audio_Wav_Class greet(PlayGameWav);
 void setup()
 {
   Serial.begin(115200);
+  delay(100);
+  Serial.println("");
   Serial.println("Wargames Missile Codes");
 
   // Load the user settings. If this fails, defaults are created.
@@ -214,7 +218,7 @@ void setup()
      ESP32 RTC is used to keep the time
      Make sure you have set your SSID and Password in secret.h
   */
-  
+
   StartWifi();
 
   // User settable countdown from main menu to go into clock if no user interaction
@@ -225,7 +229,7 @@ void setup()
   // Display MENU
   DisplayText( "MENU" );
 
-      
+
   // Setup the Audio channel
   ledcSetup(channel, freq, resolution);
   ledcAttachPin(DAC, channel);
@@ -234,58 +238,79 @@ void setup()
 
 void StartWifi()
 {
-  DisplayText( "TRYING WiFi" );
 
-  //connect to WiFi
-  int wifi_counter = 100;
-  Serial.printf("Connecting to %s ", ssid);
-  WiFi.begin(ssid, password);
-  while (WiFi.status() != WL_CONNECTED && wifi_counter > 0)
+  if ( ssid == "PUT SSID HERE" )
   {
-    delay(100);
-    RGB_Rainbow(0);
-    wifi_counter--;
-    Serial.print(".");
-  }
-
-  if (WiFi.status() != WL_CONNECTED && wifi_counter == 0)
-  {
-    DisplayText( "WiFi FAILED" );
+    DisplayText( "SSID NOT SET" );
     RGB_SetColor_ALL( Color(255, 0, 0) );
-    //while(1) {delay(1000);}
-    delay(3000);
+    hasWiFi = false;
+    delay(2000);
+  }
+  else if ( password == "PUT PASSWORD HERE" )
+  {
+    DisplayText( "PASS NOT SET" );
+    RGB_SetColor_ALL( Color(255, 0, 0) );
+    hasWiFi = false;
+    delay(2000);
   }
   else
   {
-    Serial.println(" CONNECTED");
-    DisplayText( "WiFi GOOD" );
-    RGB_SetColor_ALL( Color(0, 255, 0) );
+    DisplayText( "TRYING WiFi" );
 
-    delay(500);
+    //connect to WiFi
+    int wifi_counter = 100;
+    Serial.printf("Connecting to %s ", ssid);
+    WiFi.begin(ssid, password);
+    while (WiFi.status() != WL_CONNECTED && wifi_counter > 0)
+    {
+      delay(100);
+      RGB_Rainbow(0);
+      wifi_counter--;
+      Serial.print(".");
+    }
 
-    //init and get the time
-
-    configTime(settings_GMT * 3600, settings_DTS ? daylightOffset_sec : 0, ntpServer);
-
-    struct tm timeinfo;
-    if (!getLocalTime(&timeinfo)) {
-      Serial.println("Failed to obtain time");
-      DisplayText( "Time FAILED" );
+    if (WiFi.status() != WL_CONNECTED && wifi_counter == 0)
+    {
+      DisplayText( "WiFi FAILED" );
       RGB_SetColor_ALL( Color(255, 0, 0) );
+      hasWiFi = false;
+      //while(1) {delay(1000);}
+      delay(3000);
     }
     else
     {
-      Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+      Serial.println(" CONNECTED");
+      DisplayText( "WiFi GOOD" );
+      RGB_SetColor_ALL( Color(0, 255, 0) );
 
-      //disconnect WiFi as it's no longer needed
-      WiFi.disconnect(true);
-      WiFi.mode(WIFI_OFF);
+      hasWiFi = true;
 
-      DisplayText( "Time Set OK" );
-      RGB_SetColor_ALL( Color(0, 0, 255) );
+      delay(500);
+
+      //init and get the time
+
+      configTime(settings_GMT * 3600, settings_DST ? daylightOffset_sec : 0, ntpServer);
+
+      struct tm timeinfo;
+      if (!getLocalTime(&timeinfo)) {
+        Serial.println("Failed to obtain time");
+        DisplayText( "Time FAILED" );
+        RGB_SetColor_ALL( Color(255, 0, 0) );
+      }
+      else
+      {
+        Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+
+        //disconnect WiFi as it's no longer needed
+        WiFi.disconnect(true);
+        WiFi.mode(WIFI_OFF);
+
+        DisplayText( "Time Set OK" );
+        RGB_SetColor_ALL( Color(0, 0, 255) );
+      }
+
+      delay(1000);
     }
-
-    delay(1000);
   }
 }
 
@@ -297,7 +322,7 @@ void BUT1_SaveSettings()
 {
   if ( currentState == SET && currentMode == SETTINGS )
   {
-    Serial.print("SAAAAAVE!");
+    Serial.println("SAAAAAVE!");
     DisplayText( "SAVING..." );
     saveSettings();
     delay(500);
@@ -314,7 +339,7 @@ void BUT1_SaveSettings()
       currentState = MENU;
       currentSetting = SET_GMT;
       countdownToClock = millis() + settings_clockCountdownTime * 1000;
-      DisplayText( "MENU" );
+      DisplayText( "SETTINGS" );
     }
   }
 }
@@ -412,7 +437,7 @@ void BUT2Press()
   }
 
   Serial.print("Current State: ");
-  Serial.print( stateStrings[(int)currentState] );
+  Serial.println( stateStrings[(int)currentState] );
 }
 
 #ifdef HAXORZ_EDITION
@@ -463,9 +488,9 @@ void UpdateSetting( int dir )
 
     didChangeClockSettings = true;
   }
-  else if ( currentSetting == SET_DTS )
+  else if ( currentSetting == SET_DST )
   {
-    settings_DTS = !settings_DTS;
+    settings_DST = !settings_DST;
     didChangeClockSettings = true;
   }
   else if ( currentSetting == SET_BRIGHT )
@@ -488,6 +513,14 @@ void UpdateSetting( int dir )
 
     countdownToClock = millis() + settings_clockCountdownTime * 1000;
   }
+  else if ( currentSetting == SET_SEP )
+  {
+    settings_separator += dir;
+    if ( settings_separator == 3)
+      settings_separator = 0;
+    else if ( settings_separator < 0 )
+      settings_separator = 2;
+  }
 
   // Update the display showing whatever the new current setting is
   ShowSettings();
@@ -495,12 +528,15 @@ void UpdateSetting( int dir )
 
 void ShowSettings()
 {
+  Serial.print("current setting: ");
+  Serial.println(currentSetting);
+
   String val = "";
 
   if ( currentSetting == SET_GMT )
     val = String(settings_GMT);
-  else if ( currentSetting == SET_DTS )
-    val = settings_DTS ? "ON" : "OFF";
+  else if ( currentSetting == SET_DST )
+    val = settings_DST ? "ON" : "OFF";
   else if ( currentSetting == SET_BRIGHT )
     val = String(settings_displayBrightness);
   else if ( currentSetting == SET_CLOCK )
@@ -509,6 +545,13 @@ void ShowSettings()
       val = String(settings_clockCountdownTime);
     else
       val = "OFF";
+  }
+  else if ( currentSetting == SET_SEP)
+  {
+    if ( settings_separator == 0 )
+      val = "SPC";
+    else
+      val = clockSeparators[settings_separator];
   }
 
   DisplayText( settingsStrings[(int)currentSetting] + val);
@@ -524,19 +567,26 @@ void SetDisplayBrightness( int val )
 // Take the time data from the RTC and format it into a string we can display
 void DisplayTime()
 {
+  if (!hasWiFi)
+  {
+    DisplayText("NO CLOCK");
+    return;
+  }
   // Store the current time into a struct
   struct tm timeinfo;
   if (!getLocalTime(&timeinfo))
   {
     Serial.println("Failed to obtain time");
+    DisplayText("TIME FAILED");
     return;
   }
   // Formt the contents of the time struct into a string for display
   char DateAndTimeString[12];
+  String sep = clockSeparators[settings_separator];
   if ( timeinfo.tm_hour < 10 )
-    sprintf(DateAndTimeString, "   %d %02d %02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    sprintf(DateAndTimeString, "   %d%s%02d%s%02d", timeinfo.tm_hour, sep, timeinfo.tm_min, sep, timeinfo.tm_sec);
   else
-    sprintf(DateAndTimeString, "  %d %02d %02d", timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec);
+    sprintf(DateAndTimeString, "  %d%s%02d%s%02d", timeinfo.tm_hour, sep, timeinfo.tm_min, sep, timeinfo.tm_sec);
 
   // Iterate through each digit on the display and populate the time, or clear the digit
   uint8_t curDisplay = 0;
@@ -846,7 +896,7 @@ void loop()
 
     // Timer to go into clock if no user interaction for XX seconds
     // If settings_clockCountdownTime is 0, this feature is off
-    if ( settings_clockCountdownTime > 0 && countdownToClock < millis()  )
+    if ( hasWiFi && settings_clockCountdownTime > 0 && countdownToClock < millis()  )
     {
       currentMode = CLOCK;
       currentState = RUNNING;
@@ -951,11 +1001,14 @@ void createSettings()
   ESPFlash<int> set_GMT("/set_GMT");
   set_GMT.set(0);
 
-  ESPFlash<int> set_DTS("/set_DTS");
-  set_DTS.set(0);
+  ESPFlash<int> set_DST("/set_DST");
+  set_DST.set(0);
 
   ESPFlash<uint8_t> set_ClockCountdown("/set_ClockCountdown");
   set_ClockCountdown.set(60);
+
+  ESPFlash<uint8_t> set_Separator("/set_Separator");
+  set_Separator.set(0);
 
   ESPFlash<uint8_t> set_Brightness("/set_Brightness");
   set_Brightness.set(15);
@@ -975,11 +1028,14 @@ void loadSettings()
     return;
   }
 
+  ESPFlash<uint8_t> set_Separator("/set_Separator");
+  settings_separator = constrain(set_Separator.get(), 0, ELEMENTS(clockSeparators) - 1);
+
   ESPFlash<int> set_GMT("/set_GMT");
   settings_GMT = set_GMT.get();
 
-  ESPFlash<int> set_DTS("/set_DTS");
-  settings_DTS = set_DTS.get() == 1;
+  ESPFlash<int> set_DST("/set_DST");
+  settings_DST = set_DST.get() == 1;
 
   ESPFlash<uint8_t> set_Brightness("/set_Brightness");
   settings_displayBrightness = set_Brightness.get();
@@ -990,11 +1046,14 @@ void saveSettings()
   ESPFlash<int> set_GMT("/set_GMT");
   set_GMT.set(settings_GMT);
 
-  ESPFlash<int> set_DTS("/set_DTS");
-  set_DTS.set(settings_DTS ? 1 : 0);
+  ESPFlash<int> set_DST("/set_DST");
+  set_DST.set(settings_DST ? 1 : 0);
 
   ESPFlash<uint8_t> set_ClockCountdown("/set_ClockCountdown");
   set_ClockCountdown.set(settings_clockCountdownTime);
+
+  ESPFlash<uint8_t> set_Separator("/set_Separator");
+  set_Separator.set(settings_separator);
 
   ESPFlash<uint8_t> set_Brightness("/set_Brightness");
   set_Brightness.set(settings_displayBrightness);
