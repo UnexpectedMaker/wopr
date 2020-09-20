@@ -21,22 +21,14 @@
 // Un-comment this line if using the new HAXORZ PCB revision
 #define HAXORZ_EDITION 1
 
-#include <Wire.h>
 #include <Adafruit_GFX.h> // From Library Manager
 #include "Adafruit_LEDBackpack.h" // From Library Manager
 #include "OneButton.h" // From Library Manager
-#include "SPIFFS.h"
 #include "ESPFlash_Mod.h"
 #include <WiFi.h>
 #include "time.h"
 #include "secret.h"
 #include "rmt.h"
-
-// To play sound clips, we need the awesome Game Audio library from XTronical
-// Grab the zip an follow the instructions in this link
-// http://www.buildlog.net/blog/2018/02/game-audio-for-the-esp32/
-#include "Game_Audio.h"
-#include "greetings.h"
 
 // Defines
 #ifndef _BV
@@ -167,10 +159,6 @@ OneButton Button3(BUT3, false);
 OneButton Button4(BUT4, false);
 #endif
 
-// Create a GameAudio reference to play our greetings
-Game_Audio_Class GameAudio(DAC, 1);
-Game_Audio_Wav_Class greet(PlayGameWav);
-
 void setup()
 {
   Serial.begin(115200);
@@ -207,6 +195,11 @@ void setup()
   Clear();
   RGB_Clear();
 
+  // Setup the Audio channel
+  ledcSetup(channel, freq, resolution);
+  ledcAttachPin(DAC, channel);
+
+
   
   // Load the user settings. If this fails, defaults are created.
   DisplayText( "FRMAT SPIFFS" );
@@ -214,10 +207,6 @@ void setup()
   
   
   SetDisplayBrightness(settings_displayBrightness);
-
-
-  // Play the greetings
-  GameAudio.PlayWav(&greet, false, 1.0);
 
   /* Initialise WiFi to get the current time.
      Once the time is obtained, WiFi is disconnected and the internal
@@ -234,12 +223,6 @@ void setup()
 
   // Display MENU
   DisplayText( "MENU" );
-
-
-  // Setup the Audio channel
-  ledcSetup(channel, freq, resolution);
-  ledcAttachPin(DAC, channel);
-
 }
 
 void StartWifi()
@@ -636,6 +619,7 @@ void DisplayText(String txt)
   // Show whatever is in the display buffer on the display
   Display();
 }
+
 
 // Return a random time step for the next solving solution
 uint16_t GetNextSolveStep()
