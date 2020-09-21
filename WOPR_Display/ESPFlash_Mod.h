@@ -22,7 +22,9 @@
 #ifndef ESPFLASH_H_
 #define ESPFLASH_H_
 
+#include "SPIFFS.h"
 #include <FS.h>
+
 
 template<class T>
 class ESPFlash
