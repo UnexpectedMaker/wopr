@@ -889,6 +889,7 @@ void loop()
     if ( hasWiFi && settings_clockCountdownTime > 0 && countdownToClock < millis()  )
     {
       Clear();
+      RGB_Clear(true); // Ensure to clear the RGB LEDs when entering time display mode
       currentMode = CLOCK;
       currentState = RUNNING;
     }
