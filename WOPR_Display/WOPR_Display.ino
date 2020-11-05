@@ -662,6 +662,11 @@ void FillCodes()
 // Randomise the order of the code being solved
 void RandomiseSolveOrder()
 {
+
+  // bws 20200929 reset code_solve array back to initial state
+  for ( uint8_t i = 0; i<12; i++)
+    code_solve_order_random[i] = 99;
+    
   for ( uint8_t i = 0; i < 12; i++ )
   {
     uint8_t ind = random(0, 12);
