@@ -12,13 +12,24 @@ Build and showcase video
 [![video](http://3sprockets.com.au/um/projects/wopr/video_thumbnail.jpg)](https://youtu.be/dfT-OtWHfys)
 
 
-# Arduino code - New version - Now with more W.O.P.R.!
+# Arduino code - New V2 version - Now with more W.O.P.R.!
 
-This repository has the final code for your W.O.P.R. kit. It's written specifically for an ESP32, though not specifically for the TinyPICO, but the kit is designed to have a TinyPICO and Audio Shield plug directly into it.  
+This repository has the latest code for your W.O.P.R. kit. It's written specifically for an ESP32, though not specifically for the TinyPICO / TinyS2 / TinyS3 but the kit is designed to have a TinyPICO / TinyS2 / TinyS3 and TinyPICO Analog Audio Shield plugged directly into it.  
 
-To flash the code onto your board, you'll need to have the  Arduino IDE installed and the ESP32 board files installed from the Arduino Board Manager.
+To flash the code onto your board, you'll need to have the Arduino IDE installed and the ESP32 board files installed from the Arduino Board Manager.
 
-This updated version includes:
+# Latest V2 Version includes:
+
+- Added new system to automatically obtain and set your GMT time offset (big thanks to Larry Bank - https://github.com/bitbank2)
+- Added the ability to get the approximate number of seconds until Xmas and display
+- Added a new `DisplayText_Scroll(txt, delay)` function to scroll long text on the display
+- Added new 24 Hour time display mode to settings
+- Removed the DST setting as it's no longer needed
+- Added the ability to re-download the GMT time offset from settings menu
+- Plus all the goodies in V1 below!
+
+
+# Latest Original (V1) Version includes:
 
 - New persistent user settings mode
 - All menus are now ENUMS so it's easier to follow the code
@@ -51,15 +62,19 @@ I any of the clock settings are changed (GMT or DTS) then the W.O.P.R. will rest
 
 # Where can I get one?
 
-W.O.P.R is available on tindie
+W.O.P.R is available at:
 
+https://unexpectedmaker.com/shop/wopr-missile-launch-code-display-kit
 https://www.tindie.com/products/seonr/wopr-missile-launch-code-display-kit/
 
-Wired up for use with the TinyPICO ESP32 Development Board & TinyPICO Audio Shield
+Wired up for use with the TinyPICO, TinyS2 or TinyS3 Development Boards
 
-All products also available on my own store
+https://unexpectedmaker.com/shop
 
-http://unexpectedmaker.com/shop/
+And the TinyPICO Analog Audio Shield
+
+https://unexpectedmaker.com/shop
+
 
 
 # Support Unexpected Maker
@@ -85,9 +100,3 @@ http://youtube.com/c/unexpectedmaker
 http://twitter.com/unexpectedmaker
 
 https://discord.gg/xAHpApP
-
-https://www.facebook.com/unexpectedmaker/
-
-https://www.instagram.com/unexpectedmaker/
-
-
