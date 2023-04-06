@@ -19,47 +19,36 @@
 //===========================================================================
 
 #include <HTTPClient.h>
+#include <time.h>
 
 String GetSecondsUntilXmas()
 {
-  HTTPClient http;
-  int httpCode = -1;
-  char szTemp[] = "https://christmas-days.anvil.app/_/api/get_days";
+  struct tm *xmas;
+  time_t now = time(NULL);
 
-  http.begin(szTemp);
-  httpCode = http.GET();  //send GET request
-  if (httpCode != 200)
-  {
-    http.end();
+  xmas = localtime(&now);
+
+  //
+  // are we on/after Christmas, go to next year
+  //
+  if ((xmas->tm_mon == 11) &&
+      (xmas->tm_mday >= 25)) {
+     xmas->tm_year++;
   }
-  else
-  {
-    const char *s;
-    int i;
-    String payload = http.getString();
-    http.end();
 
-    // Payload exmaple: {"Days to Christmas":265}
+  // tm_mon (0-11), tm_mday(1-31)
+  xmas->tm_mon = 11;
+  xmas->tm_mday = 25;
+  xmas->tm_hour = 0;
+  xmas->tm_min = 0;
+  xmas->tm_sec = 0;
 
-    // Serial.print("Response: ");
-    // erial.println(payload);
-
-    int colon = payload.indexOf(":");
-    int bracket = payload.indexOf("}");
-
-    int days = payload.substring(colon + 1, bracket).toInt();
-
-    if (days > -1)
-    {
-      unsigned long seconds = (unsigned long)days * 24 * 60 * 60;
-      // Serial.print("Seconds: ");
-      // Serial.println(seconds);
-      return String(seconds) + " Seconds until XMAS...";
-    }
-
-  } // if successfully connected
-
-  return "Failed to get seconds until Xmas";
+  // convert to seconds
+  time_t xmasTime = mktime(xmas);
+  
+  unsigned long seconds = xmasTime - now;
+  
+  return String(seconds) + " Seconds until XMAS...";
 } /* GetDaysUntilXmas() */
 
 int GetTimeOffset(char *szIP)
