@@ -645,8 +645,8 @@ void DisplayTime()
   int the_hour = timeinfo.tm_hour;
 
   // Adjust for 24 hour display mode
-  if (settings_24H && the_hour > 12)
-    the_hour += 12;
+  if (!settings_24H && the_hour > 12)
+    the_hour -= 12;
 
   // Padd the time if the hour is a single digit
   if ( the_hour < 10 )
