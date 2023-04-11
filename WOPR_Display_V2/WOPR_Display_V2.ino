@@ -83,7 +83,7 @@
 // Set 0 to be off
 uint8_t settings_clockCountdownTime = 60;
 // User settable GMT value
-int settings_GMT = -100;
+int settings_GMT = 0;
 // User settable Daylight Savings state
 bool settings_24H = false;
 // User settable display brightness
@@ -776,6 +776,10 @@ void FillCodes()
 // Randomise the order of the code being solved
 void RandomiseSolveOrder()
 {
+  // Ensure all array slots start with 99
+  for ( uint8_t i = 0; i < 12; i++ )
+    code_solve_order_random[i] = 99;
+
   for ( uint8_t i = 0; i < 12; i++ )
   {
     uint8_t ind = random(0, 12);
@@ -993,7 +997,7 @@ void loop()
 #endif
 
   // We are in the menu
-  if ( currentState == MENU )
+  if ( currentState == MENU || currentState == SET )
   {
     // We dont need to do anything here, but lets show some fancy RGB!
     RGB_Rainbow(10);
@@ -1008,11 +1012,6 @@ void loop()
     }
   }
   // We are running a simulation
-  else if ( currentState == SET )
-  {
-
-
-  }
   else
   {
     if ( currentMode == 3 )
