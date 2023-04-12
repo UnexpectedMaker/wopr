@@ -86,6 +86,8 @@ uint8_t settings_clockCountdownTime = 60;
 int settings_GMT = 0;
 // User settable Daylight Savings state
 bool settings_24H = false;
+// User settable show RGB LEDs when the clock is displayed
+int settings_ClockRGB = 50;
 // User settable display brightness
 uint8_t settings_displayBrightness = 15;
 // User settable clock separator
@@ -101,7 +103,7 @@ bool isFirstBoot = false;
 String clockSeparators [] = {" ", "-", "_"};
 String stateStrings[] = {"MENU", "RUNNING", "SETTINGS"};
 String menuStrings[] = {"MODE MOVIE", "MODE RANDOM", "MODE MESSAGE", "MODE CLOCK", "SETTINGS"};
-String settingsStrings[] = {"GMT ", "24H MODE ", "BRIGHT ", "CLK CNT ", "CLK SEP ", "UPDATE GMT"};
+String settingsStrings[] = {"GMT ", "24H MODE ", "BRIGHT ", "CLK RGB ", "CLK CNT ", "CLK SEP ", "UPDATE GMT"};
 
 enum states {
   MENU = 0,
@@ -121,9 +123,10 @@ enum settings {
   SET_GMT = 0,
   SET_24H = 1,
   SET_BRIGHT = 2,
-  SET_CLOCK = 3,
-  SET_SEP = 4,
-  SET_UPDATE_GMT = 5,
+  SET_CLOCK_RGB = 3,
+  SET_CLOCK = 4,
+  SET_SEP = 5,
+  SET_UPDATE_GMT = 6,
 } currentSetting;
 
 
@@ -378,16 +381,13 @@ void BUT1_SaveSettings()
     {
       // If the clock parameters were changed, we need to re-set the ESP32 RTC time.
       configTime(settings_GMT * 3600, 0, ntpServer);
+    }
 
-    }
-    else
-    {
-      // Reset the menu state after save
-      currentState = MENU;
-      currentSetting = SET_GMT;
-      countdownToClock = millis() + settings_clockCountdownTime * 1000;
-      DisplayText( "SETTINGS" );
-    }
+    // Reset the menu state after save
+    currentState = MENU;
+    currentSetting = SET_GMT;
+    countdownToClock = millis() + settings_clockCountdownTime * 1000;
+    DisplayText( "SETTINGS" );
   }
 }
 
@@ -536,6 +536,20 @@ void UpdateSetting( int dir )
   {
     settings_24H = ! settings_24H;
   }
+  else if ( currentSetting == SET_CLOCK_RGB )
+  {
+    settings_ClockRGB += (dir * 10);
+    if ( settings_ClockRGB > 250 )
+      settings_ClockRGB = 0;
+    else if ( settings_ClockRGB < 0 )
+      settings_ClockRGB = 250;
+
+    //      Serial.print("settings_ClockRGB ");
+    //      Serial.println(settings_ClockRGB);
+    //
+    //      Serial.println((settings_ClockRGB/250) * 100);
+
+  }
   else if ( currentSetting == SET_BRIGHT )
   {
     settings_displayBrightness += dir;
@@ -573,6 +587,12 @@ void UpdateSetting( int dir )
     Clear();
     currentMode = CLOCK;
     currentState = RUNNING;
+
+    if (settings_ClockRGB == 0)
+      RGB_Clear(true);
+    else
+      RGB_SetBrightness(settings_ClockRGB);
+
     return;
   }
 
@@ -597,6 +617,13 @@ void ShowSettings()
   {
     if ( settings_clockCountdownTime > 0 )
       val = String(settings_clockCountdownTime);
+    else
+      val = "OFF";
+  }
+  else if ( currentSetting == SET_CLOCK_RGB )
+  {
+    if ( settings_ClockRGB > 0 )
+      val = String(int((float)settings_ClockRGB / 250.0 * 100)) + "%";
     else
       val = "OFF";
   }
@@ -628,6 +655,7 @@ void DisplayTime()
   if (!hasWiFi)
   {
     DisplayText("NO CLOCK");
+    RGB_SetColor_ALL( Color(0, 255, 0) );
     return;
   }
   // Store the current time into a struct
@@ -636,6 +664,7 @@ void DisplayTime()
   {
     Serial.println("Failed to obtain time");
     DisplayText("TIME FAILED");
+    RGB_SetColor_ALL( Color(0, 255, 0) );
     return;
   }
   // Formt the contents of the time struct into a string for display
@@ -1000,6 +1029,8 @@ void loop()
   if ( currentState == MENU || currentState == SET )
   {
     // We dont need to do anything here, but lets show some fancy RGB!
+    // Brightness of RGB LEDs is always 20% when in menu mode - 50/255
+    RGB_SetBrightness(50);
     RGB_Rainbow(10);
 
     // Timer to go into clock if no user interaction for XX seconds
@@ -1009,13 +1040,23 @@ void loop()
       Clear();
       currentMode = CLOCK;
       currentState = RUNNING;
+
+      if (settings_ClockRGB == 0)
+        RGB_Clear(true);
     }
   }
   // We are running a simulation
   else
   {
-    if ( currentMode == 3 )
+    if ( currentMode == CLOCK )
     {
+      // If the Clock RGB brightness is not 0, show the rainbow at the current clock RGB brightness
+      if (settings_ClockRGB > 0)
+      {
+        RGB_SetBrightness(settings_ClockRGB);
+        RGB_Rainbow(40);
+      }
+
       if ( nextBeep < millis() )
       {
         DisplayTime();
@@ -1126,6 +1167,9 @@ void loadSettings()
   ESPFlash<int> set_24H("/set_24H");
   settings_24H = (set_24H.get() == 1);
 
+  ESPFlash<uint8_t> set_ClockRGB("/set_ClockRGB");
+  settings_ClockRGB = set_ClockRGB.get();
+
   ESPFlash<uint8_t> set_Brightness("/set_Brightness");
   settings_displayBrightness = set_Brightness.get();
 }
@@ -1137,6 +1181,9 @@ void saveSettings()
 
   ESPFlash<int> set_24H("/set_24H");
   set_24H.set(settings_24H ? 1 : 0);
+
+  ESPFlash<uint8_t> set_ClockRGB("/set_ClockRGB");
+  set_ClockRGB.set(settings_ClockRGB);
 
   ESPFlash<uint8_t> set_ClockCountdown("/set_ClockCountdown");
   set_ClockCountdown.set(settings_clockCountdownTime);
