@@ -569,19 +569,20 @@ void DisplayTime()
     DisplayText("TIME FAILED");
     return;
   }
-  // Formt the contents of the time struct into a string for display
-  char DateAndTimeString[12];
+
+  // Format the contents of the time struct into a string for display
+  char DateAndTimeString[13];
   String sep = clockSeparators[settings_separator];
   if ( timeinfo.tm_hour < 10 )
-    sprintf(DateAndTimeString, "   %d%s%02d%s%02d", timeinfo.tm_hour, sep, timeinfo.tm_min, sep, timeinfo.tm_sec);
+    sprintf(DateAndTimeString, "   %d%s%02d%s%02d  ", timeinfo.tm_hour, sep, timeinfo.tm_min, sep, timeinfo.tm_sec);
   else
-    sprintf(DateAndTimeString, "  %d%s%02d%s%02d", timeinfo.tm_hour, sep, timeinfo.tm_min, sep, timeinfo.tm_sec);
+    sprintf(DateAndTimeString, "  %d%s%02d%s%02d  ", timeinfo.tm_hour, sep, timeinfo.tm_min, sep, timeinfo.tm_sec);
 
   // Iterate through each digit on the display and populate the time, or clear the digit
   uint8_t curDisplay = 0;
   uint8_t curDigit = 0;
 
-  for ( uint8_t i = 0; i < 10; i++ )
+  for ( uint8_t i = 0; i < 12; i++ )
   {
     matrix[curDisplay].writeDigitAscii( curDigit, DateAndTimeString[i]);
     curDigit++;
