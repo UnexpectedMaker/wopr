@@ -1,6 +1,6 @@
 /***************************************************
   RMT RGB Extension
-  2023 UNexpected Maker
+  2024 UNexpected Maker
   Licensed under MIT Open Source
 
   This code is designed specifically to run on an ESP32. It uses features only
@@ -16,6 +16,9 @@
   And the TinyPICO Analog Audio Shield
   https://unexpectedmaker.com/shop
 
+  Changes:
+  June 7, 2024 - code updated to support breaking changes in ESP32 Arduino Core v3.x and later.
+
  ****************************************************/
 
 #include "freertos/FreeRTOS.h"
@@ -29,9 +32,13 @@
 #define NR_OF_ALL_BITS 24*NR_OF_LEDS
 
 rmt_data_t led_data[NR_OF_ALL_BITS];
+#if ESP_ARDUINO_VERSION_MAJOR < 3
 rmt_obj_t* rmt_send = NULL;
+#endif
+
 byte brightness = 50;
 uint32_t leds[5];
+uint8_t led_data_pin = 0;
 
 uint8_t Red( uint32_t col )
 {
@@ -57,13 +64,21 @@ uint8_t AdjustForBrightness( uint8_t col )
 // Initialise the RMT buffer for use by the RGB LEDs
 bool RGB_Setup(byte ledPin, byte bright)
 {
-  if ((rmt_send = rmtInit(ledPin, RMT_TX_MODE, RMT_MEM_64)) == NULL)
+  led_data_pin = ledPin;
+  
+#if ESP_ARDUINO_VERSION_MAJOR < 3
+  if ((rmt_send = rmtInit(led_data_pin, RMT_TX_MODE, RMT_MEM_64)) == NULL)
   {
     Serial.println("RMT init sender failed!\nSomething went wrong initialising the RMT peripheral for the  RGB LEDs\nHalting!!!\n");
     return false;
   }
 
   float realTick = rmtSetTick(rmt_send, 100);
+#else
+
+  rmtInit(led_data_pin, RMT_TX_MODE, RMT_MEM_NUM_BLOCKS_1, 10000000);
+
+#endif
 
   brightness = bright;
   return true;
@@ -107,7 +122,11 @@ void RGB_FillBuffer()
   }
 
   // Send the data
+#if ESP_ARDUINO_VERSION_MAJOR < 3
   rmtWrite(rmt_send, led_data, NR_OF_ALL_BITS);
+#else
+  rmtWrite(led_data_pin, led_data, NR_OF_ALL_BITS, RMT_WAIT_FOR_EVER);
+#endif
 }
 
 // Clear the RGB LEDs

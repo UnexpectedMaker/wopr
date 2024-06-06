@@ -1,6 +1,6 @@
 /***************************************************
   War Games - W.O.P.R. Missile Codes
-  2023 UNexpected Maker
+  2024 UNexpected Maker
   Licensed under MIT Open Source
 
   This code is designed specifically to run on an ESP32. It uses features only
@@ -16,6 +16,9 @@
   All products also available on my own store
 
   http://unexpectedmaker.com/shop/
+
+  Changes:
+  June 7, 2024 - code updated to support breaking changes in ESP32 Arduino Core v3.x and later.
 
  ****************************************************/
 
@@ -45,7 +48,7 @@
 #define BUT1 2 // front lef button
 #define BUT2 3 // front right button
 #define RGBLED 4 // RGB LED Strip
-#define DAC 21 // RGB LED Strip
+#define DAC 21 // Audio Out
 
 #ifdef HAXORZ_EDITION
 #define BUT3 7 // back top button
@@ -57,7 +60,7 @@
 #define BUT1 5 // front lef button
 #define BUT2 6 // front right button
 #define RGBLED 7 // RGB LED Strip
-#define DAC 18 // RGB LED Strip
+#define DAC 18 // Audio Out
 
 #ifdef HAXORZ_EDITION
 #define BUT3 38 // back top button
@@ -69,7 +72,7 @@
 #define BUT1 14 // front lef button
 #define BUT2 15 // front right button
 #define RGBLED 27 // RGB LED Strip
-#define DAC 25 // RGB LED Strip
+#define DAC 25 // Audio Out
 
 #ifdef HAXORZ_EDITION
 #define BUT3 32 // back top button
@@ -86,6 +89,8 @@ uint8_t settings_clockCountdownTime = 60;
 int settings_GMT = 0;
 // User settable Daylight Savings state
 bool settings_24H = false;
+// User settable Daylight Savings state
+bool settings_DimAtNight = false;
 // User settable show RGB LEDs when the clock is displayed
 int settings_ClockRGB = 50;
 // User settable display brightness
@@ -103,7 +108,7 @@ bool isFirstBoot = false;
 String clockSeparators [] = {" ", "-", "_"};
 String stateStrings[] = {"MENU", "RUNNING", "SETTINGS"};
 String menuStrings[] = {"MODE MOVIE", "MODE RANDOM", "MODE MESSAGE", "MODE CLOCK", "SETTINGS"};
-String settingsStrings[] = {"GMT ", "24H MODE ", "BRIGHT ", "CLK RGB ", "CLK CNT ", "CLK SEP ", "UPDATE GMT"};
+String settingsStrings[] = {"GMT ", "24H MODE ", "BRIGHT ", "NGHT DIM ", "CLK RGB ", "CLK CNT ", "CLK SEP ", "UPDATE GMT"};
 
 enum states {
   MENU = 0,
@@ -230,8 +235,12 @@ void setup()
   RGB_Clear();
 
   // Setup the Audio channel
+#if ESP_ARDUINO_VERSION_MAJOR < 3
   ledcSetup(channel, freq, resolution);
   ledcAttachPin(DAC, channel);
+#else
+  ledcAttachChannel(DAC, freq, resolution, channel);
+#endif
 
   // Load the user settings. If this fails, defaults are created.
   DisplayText( "FRMAT SPIFFS" );
@@ -253,6 +262,15 @@ void setup()
 
   // Display MENU
   DisplayText( "MENU" );
+}
+
+void playSound(uint32_t snd)
+{
+#if ESP_ARDUINO_VERSION_MAJOR < 3
+  ledcWriteTone(channel, snd);
+#else
+  ledcWriteTone(DAC, snd);
+#endif
 }
 
 void UpdateGMT_NTP()
@@ -406,7 +424,8 @@ void BUT1Press()
       DisplayText( "MENU" );
 
       //Shutdown the audio is it's beeping
-      ledcWriteTone(channel, 0);
+      playSound(0);
+      //      ledcWriteTone(channel, 0);
       beeping = false;
     }
     else if ( currentState == MENU )
@@ -931,7 +950,8 @@ void SolveCode()
     FillCodes();
 
     // Long beep to indicate a digit in he code has been solved!
-    ledcWriteTone(channel, 1500 );
+    playSound(1500);
+    //    ledcWriteTone(channel, 1500 );
     beeping = true;
     beepCount = 3;
     nextBeep = millis() + 500;
@@ -1080,7 +1100,8 @@ void loop()
               RGB_SetDefcon(1, true);
               FillCodes();
               beepCount--;
-              ledcWriteTone(channel, 1500);
+              playSound(1500);
+              //              ledcWriteTone(channel, 1500);
             }
             else
             {
@@ -1092,7 +1113,8 @@ void loop()
           {
             Clear();
             RGB_Clear(true);
-            ledcWriteTone(channel, 0 );
+            playSound(0);
+            //            ledcWriteTone(channel, 0 );
           }
         }
 
@@ -1110,7 +1132,10 @@ void loop()
 
         // If we are not currently beeping, play some random beep/bop computer-y sounds
         if ( !beeping )
-          ledcWriteTone(channel, random(90, 250));
+        {
+          playSound(random(90, 250));
+          // ledcWriteTone(channel, random(90, 250));
+        }
       }
 
       // This is where we solve each code digit
@@ -1129,7 +1154,8 @@ void loop()
       {
         if ( nextBeep < millis() )
         {
-          ledcWriteTone(channel, 0);
+          playSound(0);
+          //          ledcWriteTone(channel, 0);
           beeping = false;
         }
       }
