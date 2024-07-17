@@ -108,7 +108,7 @@ bool isFirstBoot = false;
 String clockSeparators [] = {" ", "-", "_"};
 String stateStrings[] = {"MENU", "RUNNING", "SETTINGS"};
 String menuStrings[] = {"MODE MOVIE", "MODE RANDOM", "MODE MESSAGE", "MODE CLOCK", "SETTINGS"};
-String settingsStrings[] = {"GMT ", "24H MODE ", "BRIGHT ", "NGHT DIM ", "CLK RGB ", "CLK CNT ", "CLK SEP ", "UPDATE GMT"};
+String settingsStrings[] = {"GMT ", "24H MODE ", "BRIGHT ", "CLK RGB ", "CLK CNT ", "CLK SEP ", "UPDATE GMT"};
 
 enum states {
   MENU = 0,
@@ -592,10 +592,10 @@ void UpdateSetting( int dir )
   else if ( currentSetting == SET_SEP )
   {
     settings_separator += dir;
-    if ( settings_separator == 3)
+    if ( settings_separator == ELEMENTS(clockSeparators))
       settings_separator = 0;
     else if ( settings_separator < 0 )
-      settings_separator = 2;
+      settings_separator = ELEMENTS(clockSeparators) - 1;
   }
   else if ( currentSetting == SET_UPDATE_GMT )
   {
@@ -693,8 +693,12 @@ void DisplayTime()
   int the_hour = timeinfo.tm_hour;
 
   // Adjust for 24 hour display mode
-  if (!settings_24H && the_hour > 12)
-    the_hour -= 12;
+  if (!settings_24H) {
+    if (the_hour > 12)
+      the_hour -= 12;
+    else if (the_hour == 0)
+      the_hour = 12;
+  }
 
   // Padd the time if the hour is a single digit
   if ( the_hour < 10 )
