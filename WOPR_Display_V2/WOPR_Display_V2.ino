@@ -89,7 +89,7 @@ uint8_t settings_clockCountdownTime = 60;
 int settings_GMT = 0;
 // User settable Daylight Savings state
 bool settings_24H = false;
-// User settable Daylight Savings state
+// User settable dim clock at night
 bool settings_DimAtNight = false;
 // User settable show RGB LEDs when the clock is displayed
 int settings_ClockRGB = 50;
@@ -97,6 +97,11 @@ int settings_ClockRGB = 50;
 uint8_t settings_displayBrightness = 15;
 // User settable clock separator
 uint8_t settings_separator = 0; // 0 is " ", 1 is "-", 2 is "_"
+
+// Night dim settings
+int nightStartHour = 22;
+int nightEndHour = 7;
+int nightBrightness = 1;
 
 // NTP Wifi Time
 const char* ntpServer = "pool.ntp.org";
@@ -108,7 +113,7 @@ bool isFirstBoot = false;
 String clockSeparators [] = {" ", "-", "_"};
 String stateStrings[] = {"MENU", "RUNNING", "SETTINGS"};
 String menuStrings[] = {"MODE MOVIE", "MODE RANDOM", "MODE MESSAGE", "MODE CLOCK", "SETTINGS"};
-String settingsStrings[] = {"GMT ", "24H MODE ", "BRIGHT ", "NGHT DIM ", "CLK RGB ", "CLK CNT ", "CLK SEP ", "UPDATE GMT"};
+String settingsStrings[] = {"GMT ", "24H MODE ", "BRIGHT ", "CLK RGB ", "CLK CNT ", "CLK SEP ", "UPDATE GMT",  "NGHT DIM "};
 
 enum states {
   MENU = 0,
@@ -132,6 +137,7 @@ enum settings {
   SET_CLOCK = 4,
   SET_SEP = 5,
   SET_UPDATE_GMT = 6,
+  SET_NIGHT_DIM = 7,
 } currentSetting;
 
 
@@ -422,8 +428,9 @@ void BUT1Press()
       currentState = MENU;
 
       DisplayText( "MENU" );
-
-      //Shutdown the audio is it's beeping
+      // Reset brightness if changed by night dim
+      SetDisplayBrightness(settings_displayBrightness);
+      // Shutdown the audio if it's beeping
       playSound(0);
       //      ledcWriteTone(channel, 0);
       beeping = false;
@@ -614,6 +621,10 @@ void UpdateSetting( int dir )
 
     return;
   }
+  else if ( currentSetting == SET_NIGHT_DIM )
+  {
+    settings_DimAtNight = ! settings_DimAtNight;
+  }
 
   // Update the display showing whatever the new current setting is
   ShowSettings();
@@ -657,6 +668,10 @@ void ShowSettings()
   {
     val = "";
   }
+  else if ( currentSetting == SET_NIGHT_DIM )
+  {
+    val = settings_DimAtNight ? "ON" : "OFF";
+  }
 
   DisplayText( settingsStrings[(int)currentSetting] + val);
 }
@@ -666,6 +681,25 @@ void SetDisplayBrightness( int val )
 {
   for (int x = 0; x < 3; x++)
     matrix[x].setBrightness(val);
+}
+
+bool CheckIsNight(struct tm timeinfo)
+{
+  int the_hour = timeinfo.tm_hour;
+
+  if (nightStartHour > nightEndHour)
+  {
+    // ie. 21:00 to 6:00
+    return the_hour >= nightStartHour || the_hour < nightEndHour;
+  }
+
+  if (nightStartHour < nightEndHour)
+  {
+    // ie. 9:00 to 18:00
+    return the_hour >= nightStartHour && the_hour < nightEndHour;
+  }
+
+  return false;
 }
 
 // Take the time data from the RTC and format it into a string we can display
@@ -686,6 +720,15 @@ void DisplayTime()
     RGB_SetColor_ALL( Color(0, 255, 0) );
     return;
   }
+
+  if (settings_DimAtNight)
+  {
+    if (CheckIsNight(timeinfo))
+      SetDisplayBrightness(nightBrightness);
+    else
+      SetDisplayBrightness(settings_displayBrightness);
+  }
+
   // Formt the contents of the time struct into a string for display
   char DateAndTimeString[12];
   String sep = clockSeparators[settings_separator];
@@ -1198,6 +1241,9 @@ void loadSettings()
 
   ESPFlash<uint8_t> set_Brightness("/set_Brightness");
   settings_displayBrightness = set_Brightness.get();
+
+  ESPFlash<int> set_NightDim("/set_NightDim");
+  settings_DimAtNight = (set_NightDim.get() == 1);
 }
 
 void saveSettings()
@@ -1219,4 +1265,7 @@ void saveSettings()
 
   ESPFlash<uint8_t> set_Brightness("/set_Brightness");
   set_Brightness.set(settings_displayBrightness);
+
+  ESPFlash<int> set_NightDim("/set_NightDim");
+  set_NightDim.set(settings_DimAtNight ? 1 : 0);
 }
